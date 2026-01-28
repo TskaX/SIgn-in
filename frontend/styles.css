@@ -292,6 +292,12 @@ input::placeholder { color: rgba(255, 255, 255, 0.3); }
 
 .event-btn-name {
   font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.event-btn-date {
+  font-size: 12px;
+  opacity: 0.6;
   margin-bottom: 4px;
 }
 

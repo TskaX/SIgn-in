@@ -481,6 +481,7 @@ function renderCheckinPage() {
             <button class="event-btn ${state.selectedEvent === event.id ? 'selected' : ''}"
                     onclick="selectEvent('${event.id}')">
               <div class="event-btn-name">${event.name}</div>
+              <div class="event-btn-date">${event.date}</div>
               <div class="event-btn-points">+${event.points} 積分</div>
             </button>
           `).join('')
