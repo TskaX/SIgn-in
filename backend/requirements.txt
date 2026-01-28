@@ -1,0 +1,26 @@
+# 簽到積分系統 - Python 後端依賴
+# ================================
+
+# Web 框架
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# 資料驗證
+pydantic==2.5.3
+
+# JWT 認證
+PyJWT==2.8.0
+
+# 資料庫（可選，根據需求取消註解）
+# sqlalchemy==2.0.25
+# asyncpg==0.29.0  # PostgreSQL
+# motor==3.3.2     # MongoDB
+# redis==5.0.1     # Redis 快取
+
+# 開發工具
+python-multipart==0.0.6
+python-dotenv==1.0.0
+
+# 測試
+pytest==7.4.4
+httpx==0.26.0
