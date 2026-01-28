@@ -825,22 +825,32 @@ window.selectEvent = function(eventId) {
 };
 
 window.toggleMember = function(memberId) {
+  // 清除搜尋防抖動計時器，避免衝突
+  clearTimeout(searchTimeout);
+
   if (state.selectedMembers.has(memberId)) {
     state.selectedMembers.delete(memberId);
   } else {
     state.selectedMembers.add(memberId);
   }
-  render();
+
+  // 只更新列表和按鈕，不重新渲染整頁
+  updateCheckinUI();
 };
 
 window.toggleSelectAll = function() {
+  // 清除搜尋防抖動計時器，避免衝突
+  clearTimeout(searchTimeout);
+
   const filtered = getFilteredMembers();
   if (state.selectedMembers.size === filtered.length) {
     state.selectedMembers.clear();
   } else {
     filtered.forEach(m => state.selectedMembers.add(m.id));
   }
-  render();
+
+  // 只更新列表和按鈕，不重新渲染整頁
+  updateCheckinUI();
 };
 
 let searchTimeout = null;
@@ -911,6 +921,59 @@ function updateCheckinList(members) {
       `;
     }
   }
+
+  // 更新按鈕
+  updateCheckinButton();
+}
+
+function updateCheckinButton() {
+  const filteredMembers = getFilteredMembers();
+  const btn = document.querySelector('.main-content .mt-24 button');
+  if (btn) {
+    btn.disabled = !state.selectedEvent || state.selectedMembers.size === 0;
+    btn.textContent = `確認簽到 (${state.selectedMembers.size} 人)`;
+  }
+
+  // 更新全選 checkbox
+  const selectAllCheckbox = document.querySelector('.list-header .checkbox');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked = state.selectedMembers.size === filteredMembers.length && filteredMembers.length > 0;
+  }
+
+  // 更新全選文字
+  const selectAllLabel = document.querySelector('.list-header .checkbox-label');
+  if (selectAllLabel) {
+    const checkbox = selectAllLabel.querySelector('.checkbox');
+    if (checkbox) {
+      selectAllLabel.innerHTML = `
+        <input type="checkbox" class="checkbox"
+               ${state.selectedMembers.size === filteredMembers.length && filteredMembers.length > 0 ? 'checked' : ''}
+               onchange="toggleSelectAll()">
+        全選 (${state.selectedMembers.size}/${filteredMembers.length})
+      `;
+    }
+  }
+}
+
+function updateCheckinUI() {
+  const filteredMembers = getFilteredMembers();
+
+  // 更新列表項目的選中狀態
+  const listItems = document.querySelectorAll('.main-content .list .list-item:not(.list-header)');
+  listItems.forEach((item, index) => {
+    if (index < filteredMembers.length) {
+      const member = filteredMembers[index];
+      const isSelected = state.selectedMembers.has(member.id);
+      item.classList.toggle('selected', isSelected);
+      const checkbox = item.querySelector('.checkbox');
+      if (checkbox) {
+        checkbox.checked = isSelected;
+      }
+    }
+  });
+
+  // 更新按鈕和全選
+  updateCheckinButton();
 }
 
 function updateMembersGrid(members) {
