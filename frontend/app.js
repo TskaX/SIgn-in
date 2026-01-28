@@ -39,6 +39,13 @@ async function api(endpoint, options = {}) {
       headers: { ...headers, ...options.headers }
     });
 
+    // 401 表示 token 無效，自動登出
+    if (res.status === 401 && state.isLoggedIn) {
+      logout();
+      alert('登入已過期，請重新登入');
+      throw new Error('登入已過期');
+    }
+
     if (!res.ok) {
       const error = await res.json();
       throw new Error(error.detail || 'API Error');

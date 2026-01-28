@@ -21,6 +21,7 @@ import jwt
 import hashlib
 import uuid
 import os
+import json
 
 # ============== 配置（從環境變數讀取）==============
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
@@ -133,11 +134,45 @@ class CheckInRecord(BaseModel):
     points_awarded: float
     checked_in_at: str
 
-# ============== 模擬資料庫 ==============
-# 實際專案中請替換為真正的資料庫（如 PostgreSQL、MongoDB）
+# ============== 資料持久化 ==============
+DATA_FILE = "/app/data/db.json"
 
-db = {
-    "users": {
+def load_db():
+    """從 JSON 檔案載入資料"""
+    default_db = {
+        "members": {},
+        "teams": {},
+        "events": {},
+        "checkin_records": {}
+    }
+    try:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # 確保所有必要的 key 都存在
+                for key in default_db:
+                    if key not in data:
+                        data[key] = {}
+                return data
+    except Exception as e:
+        print(f"載入資料失敗: {e}")
+    return default_db
+
+def save_db():
+    """儲存資料到 JSON 檔案"""
+    try:
+        os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(db, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"儲存資料失敗: {e}")
+
+# 載入資料
+db = load_db()
+
+# 動態產生 users（不儲存到檔案，每次從環境變數讀取）
+def get_users():
+    return {
         ADMIN_USERNAME: {
             "id": "user-1",
             "username": ADMIN_USERNAME,
@@ -145,12 +180,7 @@ db = {
             "role": UserRole.ADMIN,
             "name": "系統管理員"
         }
-    },
-    "members": {},
-    "teams": {},
-    "events": {},
-    "checkin_records": {}
-}
+    }
 
 # 初始化範例資料
 def init_sample_data():
@@ -236,7 +266,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
 def get_current_user(token_data: dict = Depends(verify_token)):
     username = token_data.get("sub")
-    user = db["users"].get(username)
+    user = get_users().get(username)
     if not user:
         raise HTTPException(status_code=404, detail="使用者不存在")
     return user
@@ -252,7 +282,7 @@ def require_admin(current_user: dict = Depends(get_current_user)):
 @app.post("/api/auth/login", response_model=Token, tags=["認證"])
 async def login(request: LoginRequest):
     """使用者登入"""
-    user = db["users"].get(request.username)
+    user = get_users().get(request.username)
     if not user:
         raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
     
@@ -326,6 +356,7 @@ async def create_member(request: MemberCreate, _: dict = Depends(require_admin))
         "created_at": datetime.now().isoformat()
     }
     db["members"][member_id] = member
+    save_db()
     return member
 
 @app.put("/api/members/{member_id}", tags=["人員管理"])
@@ -341,6 +372,7 @@ async def update_member(
     
     update_data = request.dict(exclude_unset=True)
     member.update(update_data)
+    save_db()
     return member
 
 @app.delete("/api/members/{member_id}", tags=["人員管理"])
@@ -349,6 +381,7 @@ async def delete_member(member_id: str, _: dict = Depends(require_admin)):
     if member_id not in db["members"]:
         raise HTTPException(status_code=404, detail="人員不存在")
     del db["members"][member_id]
+    save_db()
     return {"message": "刪除成功"}
 
 # ----- 團隊管理 -----
@@ -372,6 +405,7 @@ async def create_team(request: TeamCreate, _: dict = Depends(require_admin)):
         "created_at": datetime.now().isoformat()
     }
     db["teams"][team_id] = team
+    save_db()
     return team
 
 # ----- 事件管理 -----
@@ -410,6 +444,7 @@ async def create_event(request: EventCreate, _: dict = Depends(require_admin)):
         "created_at": datetime.now().isoformat()
     }
     db["events"][event_id] = event
+    save_db()
     return event
 
 @app.put("/api/events/{event_id}", tags=["事件管理"])
@@ -425,6 +460,7 @@ async def update_event(
     
     update_data = request.dict(exclude_unset=True)
     event.update(update_data)
+    save_db()
     return event
 
 @app.delete("/api/events/{event_id}", tags=["事件管理"])
@@ -433,6 +469,7 @@ async def delete_event(event_id: str, _: dict = Depends(require_admin)):
     if event_id not in db["events"]:
         raise HTTPException(status_code=404, detail="事件不存在")
     del db["events"][event_id]
+    save_db()
     return {"message": "刪除成功"}
 
 # ----- 簽到 -----
@@ -474,7 +511,8 @@ async def single_checkin(request: CheckInRequest, _: dict = Depends(verify_token
         }
         db["checkin_records"][record_id] = record
         results.append(record)
-    
+
+    save_db()
     return {
         "success": True,
         "checked_in_count": len(results),
@@ -526,7 +564,8 @@ async def batch_checkin(request: BatchCheckInRequest, _: dict = Depends(verify_t
         db["checkin_records"][record_id] = record
         results.append(record)
         success_count += 1
-    
+
+    save_db()
     return {
         "success": True,
         "event_name": event["name"],
@@ -634,6 +673,7 @@ async def delete_checkin_record(record_id: str, _: dict = Depends(require_admin)
 
     # 刪除記錄
     del db["checkin_records"][record_id]
+    save_db()
 
     return {
         "message": "刪除成功",
@@ -656,6 +696,7 @@ async def reset_all_points(_: dict = Depends(require_admin)):
     # 清空所有簽到記錄
     records_cleared = len(db["checkin_records"])
     db["checkin_records"].clear()
+    save_db()
 
     return {
         "message": "已清空所有積分",
@@ -676,6 +717,7 @@ async def reset_all_data(_: dict = Depends(require_admin)):
     db["teams"].clear()
     db["events"].clear()
     db["checkin_records"].clear()
+    save_db()
 
     return {
         "message": "已清空所有資料",
@@ -702,6 +744,7 @@ async def clear_member_points(member_id: str, _: dict = Depends(require_admin)):
     ]
     for rid in records_to_delete:
         del db["checkin_records"][rid]
+    save_db()
 
     return {
         "message": "已清空積分",
