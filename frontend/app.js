@@ -367,9 +367,6 @@ function renderLoginModal() {
           <button class="btn btn-primary" onclick="handleLoginSubmit()">登入</button>
         </div>
 
-        <button class="btn btn-secondary" style="width:100%;margin-top:12px;font-size:13px;" onclick="quickLogin()">
-          🚀 快速進入示範模式
-        </button>
       </div>
     </div>
   `;
@@ -798,14 +795,11 @@ window.handleLoginSubmit = async function() {
 
   const error = await login(username, password);
   if (error) {
-    errorEl.textContent = error + '（提示：admin / admin123）';
+    errorEl.textContent = error;
     errorEl.classList.remove('hidden');
   }
 };
 
-window.quickLogin = async function() {
-  await login('admin', 'admin123');
-};
 
 window.setActiveTab = function(tab) {
   state.activeTab = tab;
