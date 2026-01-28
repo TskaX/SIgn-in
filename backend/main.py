@@ -480,9 +480,10 @@ async def single_checkin(request: CheckInRequest, _: dict = Depends(verify_token
     if not event:
         raise HTTPException(status_code=404, detail="事件不存在")
     
-    if event["status"] != EventStatus.ACTIVE:
+    event_status = event["status"].value if isinstance(event["status"], EventStatus) else event["status"]
+    if event_status != "active":
         raise HTTPException(status_code=400, detail="此事件無法簽到")
-    
+
     results = []
     for member_id in request.member_ids:
         member = db["members"].get(member_id)
@@ -526,9 +527,10 @@ async def batch_checkin(request: BatchCheckInRequest, _: dict = Depends(verify_t
     if not event:
         raise HTTPException(status_code=404, detail="事件不存在")
     
-    if event["status"] != EventStatus.ACTIVE:
+    event_status = event["status"].value if isinstance(event["status"], EventStatus) else event["status"]
+    if event_status != "active":
         raise HTTPException(status_code=400, detail="此事件無法簽到")
-    
+
     success_count = 0
     failed_count = 0
     results = []
@@ -625,7 +627,7 @@ async def get_statistics(_: dict = Depends(require_admin)):
         "total_events": len(events),
         "total_checkins": len(records),
         "total_points_distributed": total_points,
-        "active_events": len([e for e in events if e["status"] == EventStatus.ACTIVE]),
+        "active_events": len([e for e in events if (e["status"].value if isinstance(e["status"], EventStatus) else e["status"]) == "active"]),
         "team_statistics": team_stats
     }
 

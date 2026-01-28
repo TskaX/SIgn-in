@@ -87,6 +87,12 @@ function logout() {
   state.user = null;
   state.isLoggedIn = false;
 
+  // 清除搜尋狀態
+  state.searchQuery = '';
+  state.teamFilter = '全部';
+  state.selectedMembers.clear();
+  state.selectedEvent = null;
+
   // 清除 localStorage
   localStorage.removeItem('token');
   localStorage.removeItem('user');
@@ -654,7 +660,7 @@ function renderEventsPage() {
     <div class="card hidden" id="eventForm">
       <div class="inline-form">
         <input type="text" class="form-input" id="newEventName" placeholder="事件名稱">
-        <input type="number" class="form-input" id="newEventPoints" placeholder="積分" value="10" step="0.1" style="width:100px">
+        <input type="number" class="form-input" id="newEventPoints" placeholder="積分" value="0.5" step="0.1" style="width:100px">
         <input type="date" class="form-input" id="newEventDate" style="width:160px">
         <button class="btn btn-success" onclick="submitNewEvent()">確認新增</button>
       </div>
@@ -972,6 +978,11 @@ window.updateSearch = function(value) {
 window.updateTeamFilter = function(value) {
   state.teamFilter = value;
   render();
+  // 恢復搜尋框的值
+  const searchInput = document.querySelector('.search-input');
+  if (searchInput && state.searchQuery) {
+    searchInput.value = state.searchQuery;
+  }
 };
 
 window.toggleMemberExpand = function(memberId) {
@@ -1050,7 +1061,7 @@ window.submitNewEvent = function() {
   if (name && date) {
     addEvent(name, points, date);
     $('#newEventName').value = '';
-    $('#newEventPoints').value = '10';
+    $('#newEventPoints').value = '0.5';
     $('#newEventDate').value = '';
     $('#eventForm').classList.add('hidden');
   }
