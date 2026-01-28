@@ -439,7 +439,7 @@ async def create_event(request: EventCreate, _: dict = Depends(require_admin)):
         "name": request.name,
         "points": request.points,
         "date": request.date,
-        "status": EventStatus.ACTIVE,
+        "status": "active",
         "description": request.description,
         "created_at": datetime.now().isoformat()
     }

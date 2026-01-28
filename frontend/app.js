@@ -977,12 +977,8 @@ window.updateSearch = function(value) {
 
 window.updateTeamFilter = function(value) {
   state.teamFilter = value;
-  render();
-  // 恢復搜尋框的值
-  const searchInput = document.querySelector('.search-input');
-  if (searchInput && state.searchQuery) {
-    searchInput.value = state.searchQuery;
-  }
+  // 只更新列表，不重新渲染整個頁面
+  updateMembersList();
 };
 
 window.toggleMemberExpand = function(memberId) {
