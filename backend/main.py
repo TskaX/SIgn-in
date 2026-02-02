@@ -81,12 +81,14 @@ class EventCreate(BaseModel):
     name: str
     points: float
     date: str
+    time: Optional[str] = None
     description: Optional[str] = None
 
 class EventUpdate(BaseModel):
     name: Optional[str] = None
     points: Optional[float] = None
     date: Optional[str] = None
+    time: Optional[str] = None
     status: Optional[EventStatus] = None
     description: Optional[str] = None
 
@@ -316,6 +318,29 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
         "role": current_user["role"]
     }
 
+# ----- 公開 API（不需認證）-----
+@app.get("/api/public/leaderboard", tags=["公開 API"])
+async def get_public_leaderboard():
+    """取得公開排行榜（不需認證）"""
+    members = list(db["members"].values())
+    records = list(db["checkin_records"].values())
+
+    # 加入簽到記錄的關聯資料
+    enriched_records = []
+    for record in records:
+        event = db["events"].get(record["event_id"], {})
+        enriched_records.append({
+            **record,
+            "event_name": event.get("name"),
+            "event_date": event.get("date"),
+            "event_time": event.get("time")
+        })
+
+    return {
+        "members": members,
+        "records": enriched_records
+    }
+
 # ----- 人員管理 -----
 @app.get("/api/members", tags=["人員管理"])
 async def get_members(
@@ -325,14 +350,14 @@ async def get_members(
 ):
     """取得人員列表"""
     members = list(db["members"].values())
-    
+
     if team:
         members = [m for m in members if m["team"] == team]
-    
+
     if search:
         search_lower = search.lower()
         members = [m for m in members if search_lower in m["name"].lower()]
-    
+
     return {"members": members, "total": len(members)}
 
 @app.get("/api/members/{member_id}", tags=["人員管理"])
@@ -408,6 +433,52 @@ async def create_team(request: TeamCreate, _: dict = Depends(require_admin)):
     save_db()
     return team
 
+class TeamUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+@app.put("/api/teams/{team_id}", tags=["團隊管理"])
+async def update_team(
+    team_id: str,
+    request: TeamUpdate,
+    _: dict = Depends(require_admin)
+):
+    """更新團隊"""
+    team = db["teams"].get(team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="團隊不存在")
+
+    old_name = team["name"]
+    update_data = request.dict(exclude_unset=True)
+
+    # 如果改了名稱，也要更新所有成員的 team 欄位
+    if "name" in update_data and update_data["name"] != old_name:
+        for member in db["members"].values():
+            if member["team"] == old_name:
+                member["team"] = update_data["name"]
+
+    team.update(update_data)
+    save_db()
+    return team
+
+@app.delete("/api/teams/{team_id}", tags=["團隊管理"])
+async def delete_team(team_id: str, _: dict = Depends(require_admin)):
+    """刪除團隊"""
+    team = db["teams"].get(team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="團隊不存在")
+
+    team_name = team["name"]
+
+    # 將該團隊的成員設為無部門
+    for member in db["members"].values():
+        if member["team"] == team_name:
+            member["team"] = None
+
+    del db["teams"][team_id]
+    save_db()
+    return {"message": "刪除成功"}
+
 # ----- 事件管理 -----
 @app.get("/api/events", tags=["事件管理"])
 async def get_events(
@@ -439,6 +510,7 @@ async def create_event(request: EventCreate, _: dict = Depends(require_admin)):
         "name": request.name,
         "points": request.points,
         "date": request.date,
+        "time": request.time,
         "status": "active",
         "description": request.description,
         "created_at": datetime.now().isoformat()
@@ -655,10 +727,12 @@ async def get_checkin_records(
         enriched_records.append({
             **record,
             "event_name": event.get("name"),
+            "event_date": event.get("date"),
+            "event_time": event.get("time"),
             "member_name": member.get("name"),
             "member_team": member.get("team")
         })
-    
+
     return {"records": enriched_records}
 
 @app.delete("/api/checkin-records/{record_id}", tags=["簽到記錄"])

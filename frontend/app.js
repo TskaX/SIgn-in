@@ -208,11 +208,37 @@ async function addTeam(name, description) {
   }
 }
 
-async function addEvent(name, points, date) {
+async function updateTeam(id, data) {
+  try {
+    await api(`/api/teams/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+    await loadData();
+    render();
+    showToast('部門資料已更新');
+  } catch (err) {
+    alert('更新失敗：' + err.message);
+  }
+}
+
+async function deleteTeam(id) {
+  if (!confirm('確定要刪除這個部門嗎？\n\n該部門的成員將變成「無部門」。')) return;
+  try {
+    await api(`/api/teams/${id}`, { method: 'DELETE' });
+    await loadData();
+    render();
+    showToast('部門已刪除');
+  } catch (err) {
+    alert('刪除失敗：' + err.message);
+  }
+}
+
+async function addEvent(name, points, date, time) {
   try {
     await api('/api/events', {
       method: 'POST',
-      body: JSON.stringify({ name, points: parseFloat(points), date })
+      body: JSON.stringify({ name, points: parseFloat(points), date, time: time || null })
     });
     await loadData();
     render();
@@ -245,6 +271,20 @@ async function updateEventStatus(id, status) {
   }
 }
 
+async function updateEvent(id, data) {
+  try {
+    await api(`/api/events/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+    await loadData();
+    render();
+    showToast('事件已更新');
+  } catch (err) {
+    alert('更新失敗：' + err.message);
+  }
+}
+
 async function resetAllPoints() {
   if (!confirm('確定要清空所有人員的積分嗎？\n\n此操作將：\n- 將所有人員積分歸零\n- 刪除所有簽到記錄\n\n此操作無法復原！')) return;
   if (!confirm('再次確認：真的要清空所有積分嗎？')) return;
@@ -257,6 +297,42 @@ async function resetAllPoints() {
   } catch (err) {
     alert('清空失敗：' + err.message);
   }
+}
+
+function exportToExcel() {
+  const sortedMembers = [...state.members].sort((a, b) => b.points - a.points);
+
+  // BOM for UTF-8
+  let csvContent = '\uFEFF';
+
+  // Header
+  csvContent += '排名,姓名,部門,積分,簽到次數\n';
+
+  // Data rows
+  sortedMembers.forEach((member, index) => {
+    const records = getMemberRecords(member.id);
+    const row = [
+      index + 1,
+      `"${member.name}"`,
+      `"${member.team || '無部門'}"`,
+      member.points,
+      records.length
+    ];
+    csvContent += row.join(',') + '\n';
+  });
+
+  // Create download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `積分排行榜_${new Date().toISOString().split('T')[0]}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  showToast('已匯出 Excel 檔案');
 }
 
 async function deleteCheckinRecord(recordId) {
@@ -421,15 +497,19 @@ function renderPublicPage() {
               <div class="records-panel">
                 <div class="records-title">📋 積分來源（共 ${records.length} 筆）</div>
                 ${records.length === 0 ? '<div class="text-muted">尚無簽到記錄</div>' :
-                  records.map(r => `
-                    <div class="record-item">
-                      <div>
-                        <div class="record-name">${r.event_name || '事件'}</div>
-                        <div class="record-date">${r.checked_in_at?.split('T')[0] || ''}</div>
+                  records.map(r => {
+                    const timeDisplay = r.event_time ? ` ${r.event_time}` : '';
+                    const dateDisplay = r.event_date || r.checked_in_at?.split('T')[0] || '';
+                    return `
+                      <div class="record-item">
+                        <div>
+                          <div class="record-name">${r.event_name || '事件'}</div>
+                          <div class="record-date">${dateDisplay}${timeDisplay}</div>
+                        </div>
+                        <div class="record-points">+${r.points_awarded}</div>
                       </div>
-                      <div class="record-points">+${r.points_awarded}</div>
-                    </div>
-                  `).join('')
+                    `;
+                  }).join('')
                 }
               </div>
             ` : ''}
@@ -477,14 +557,17 @@ function renderCheckinPage() {
       <h3 class="card-title">選擇簽到事件</h3>
       <div class="event-buttons">
         ${activeEvents.length === 0 ? '<p class="text-muted">目前沒有進行中的事件</p>' :
-          activeEvents.map(event => `
-            <button class="event-btn ${state.selectedEvent === event.id ? 'selected' : ''}"
-                    onclick="selectEvent('${event.id}')">
-              <div class="event-btn-name">${event.name}</div>
-              <div class="event-btn-date">${event.date}</div>
-              <div class="event-btn-points">+${event.points} 積分</div>
-            </button>
-          `).join('')
+          activeEvents.map(event => {
+            const timeDisplay = event.time ? ` ${event.time}` : '';
+            return `
+              <button class="event-btn ${state.selectedEvent === event.id ? 'selected' : ''}"
+                      onclick="selectEvent('${event.id}')">
+                <div class="event-btn-name">${event.name}</div>
+                <div class="event-btn-date">${event.date}${timeDisplay}</div>
+                <div class="event-btn-points">+${event.points} 積分</div>
+              </button>
+            `;
+          }).join('')
         }
       </div>
     </div>
@@ -513,7 +596,7 @@ function renderCheckinPage() {
              onclick="toggleMember('${member.id}')">
           <input type="checkbox" class="checkbox"
                  ${state.selectedMembers.has(member.id) ? 'checked' : ''}
-                 onclick="event.stopPropagation()">
+                 onclick="event.stopPropagation(); toggleMember('${member.id}')">
           <div class="avatar">${member.name[0]}</div>
           <div class="flex-1">
             <div class="font-semibold mb-4">${member.name}</div>
@@ -573,7 +656,7 @@ function renderMembersPage() {
         return `
           <div class="member-card">
             <div class="member-card-header">
-              <div class="avatar avatar-large">${member.name[0]}</div>
+              <div class="avatar">${member.name[0]}</div>
               <div class="member-card-info">
                 <div class="member-card-name">${member.name}</div>
                 <div class="member-card-team">${member.team || '無部門'}</div>
@@ -587,9 +670,9 @@ function renderMembersPage() {
               <div class="member-card-points-value">${member.points}</div>
               <div class="member-card-points-label">累計積分</div>
             </div>
-            <button class="btn btn-secondary btn-small mt-12" style="width:100%"
+            <button class="btn btn-secondary btn-small mt-12" style="width:100%;font-size:12px;padding:8px"
                     onclick="toggleMemberExpand('${member.id}')">
-              ${isExpanded ? '收起積分來源 ▲' : '查看積分來源 ▼'}
+              ${isExpanded ? '收起 ▲' : '詳情 ▼'}
             </button>
             ${isExpanded ? `
               <div class="records-panel" style="padding:16px;margin-top:12px;background:rgba(0,0,0,0.2);border-radius:12px">
@@ -644,9 +727,40 @@ function renderTeamsPage() {
               <div class="text-muted" style="font-size:13px">${team.description || '無說明'}</div>
             </div>
             <div class="badge badge-primary" style="margin-right:16px">${memberCount} 人</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary btn-small" onclick="showEditTeamModal('${team.id}')">編輯</button>
+              <button class="btn btn-danger btn-small" onclick="deleteTeam('${team.id}')">刪除</button>
+            </div>
           </div>
         `;
       }).join('')}
+    </div>
+    <div id="editTeamModalContainer"></div>
+  `;
+}
+
+function renderEditTeamModal(team) {
+  return `
+    <div class="modal-overlay" id="editTeamModal" onclick="if(event.target === this) hideEditTeamModal()">
+      <div class="modal">
+        <h2 class="modal-title">編輯部門</h2>
+        <p class="modal-subtitle">修改部門資料</p>
+
+        <div class="form-group">
+          <label class="form-label">部門名稱</label>
+          <input type="text" id="editTeamName" class="form-input" value="${team.name}" placeholder="請輸入部門名稱">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">部門說明</label>
+          <input type="text" id="editTeamDesc" class="form-input" value="${team.description || ''}" placeholder="請輸入部門說明（選填）">
+        </div>
+
+        <div class="form-buttons">
+          <button class="btn btn-secondary" onclick="hideEditTeamModal()">取消</button>
+          <button class="btn btn-primary" onclick="submitEditTeam('${team.id}')">儲存</button>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -663,6 +777,7 @@ function renderEventsPage() {
         <input type="text" class="form-input" id="newEventName" placeholder="事件名稱">
         <input type="number" class="form-input" id="newEventPoints" placeholder="積分" value="0.5" step="0.1" style="width:100px">
         <input type="date" class="form-input" id="newEventDate" style="width:160px">
+        <input type="time" class="form-input" id="newEventTime" style="width:120px" placeholder="時間">
         <button class="btn btn-success" onclick="submitNewEvent()">確認新增</button>
       </div>
     </div>
@@ -670,13 +785,14 @@ function renderEventsPage() {
     <div class="list">
       ${state.events.map(event => {
         const statusClass = event.status === 'active' ? 'status-active' : 'status-completed';
+        const timeDisplay = event.time ? ` ${event.time}` : '';
         return `
           <div class="list-item" style="cursor:default">
             <div class="avatar" style="background:${event.status === 'active' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' :
                                                      'rgba(255,255,255,0.1)'}">📅</div>
             <div class="flex-1">
               <div class="font-semibold mb-4">${event.name}</div>
-              <div class="text-muted" style="font-size:13px">${event.date}</div>
+              <div class="text-muted" style="font-size:13px">${event.date}${timeDisplay}</div>
             </div>
             <div class="badge badge-primary" style="margin-right:16px">+${event.points} 積分</div>
             <select class="form-select ${statusClass}" style="padding:8px 12px;border-radius:20px;margin-right:12px"
@@ -684,10 +800,50 @@ function renderEventsPage() {
               <option value="active" ${event.status === 'active' ? 'selected' : ''}>進行中</option>
               <option value="completed" ${event.status === 'completed' ? 'selected' : ''}>已結束</option>
             </select>
-            <button class="btn btn-danger btn-small" onclick="deleteEvent('${event.id}')">刪除</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary btn-small" onclick="showEditEventModal('${event.id}')">編輯</button>
+              <button class="btn btn-danger btn-small" onclick="deleteEvent('${event.id}')">刪除</button>
+            </div>
           </div>
         `;
       }).join('')}
+    </div>
+    <div id="editEventModalContainer"></div>
+  `;
+}
+
+function renderEditEventModal(event) {
+  return `
+    <div class="modal-overlay" id="editEventModal" onclick="if(event.target === this) hideEditEventModal()">
+      <div class="modal">
+        <h2 class="modal-title">編輯事件</h2>
+        <p class="modal-subtitle">修改事件資料</p>
+
+        <div class="form-group">
+          <label class="form-label">事件名稱</label>
+          <input type="text" id="editEventName" class="form-input" value="${event.name}" placeholder="請輸入事件名稱">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">積分</label>
+          <input type="number" id="editEventPoints" class="form-input" value="${event.points}" step="0.1" placeholder="請輸入積分">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">日期</label>
+          <input type="date" id="editEventDate" class="form-input" value="${event.date}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">時間</label>
+          <input type="time" id="editEventTime" class="form-input" value="${event.time || ''}">
+        </div>
+
+        <div class="form-buttons">
+          <button class="btn btn-secondary" onclick="hideEditEventModal()">取消</button>
+          <button class="btn btn-primary" onclick="submitEditEvent('${event.id}')">儲存</button>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -701,6 +857,9 @@ function renderLeaderboardPage() {
       <h2 class="page-title">積分排行榜</h2>
       <div style="display:flex;align-items:center;gap:16px">
         <span class="text-muted">總積分：${totalPoints}</span>
+        <button class="btn btn-secondary btn-small" onclick="exportToExcel()">
+          📥 匯出 Excel
+        </button>
         ${totalPoints > 0 ? `
           <button class="btn btn-danger btn-small" onclick="resetAllPoints()">
             🗑️ 清空所有積分
@@ -736,15 +895,19 @@ function renderLeaderboardPage() {
             <div class="records-panel">
               <div class="records-title">📋 積分來源（共 ${records.length} 筆）</div>
               ${records.length === 0 ? '<div class="text-muted">尚無簽到記錄</div>' :
-                records.map(r => `
-                  <div class="record-item">
-                    <div>
-                      <div class="record-name">${r.event_name || '事件'}</div>
-                      <div class="record-date">${r.checked_in_at?.split('T')[0] || ''}</div>
+                records.map(r => {
+                  const timeDisplay = r.event_time ? ` ${r.event_time}` : '';
+                  const dateDisplay = r.event_date || r.checked_in_at?.split('T')[0] || '';
+                  return `
+                    <div class="record-item">
+                      <div>
+                        <div class="record-name">${r.event_name || '事件'}</div>
+                        <div class="record-date">${dateDisplay}${timeDisplay}</div>
+                      </div>
+                      <div class="record-points">+${r.points_awarded}</div>
                     </div>
-                    <div class="record-points">+${r.points_awarded}</div>
-                  </div>
-                `).join('')
+                  `;
+                }).join('')
               }
             </div>
           ` : ''}
@@ -898,7 +1061,7 @@ function updateCheckinList(members) {
          onclick="toggleMember('${member.id}')">
       <input type="checkbox" class="checkbox"
              ${state.selectedMembers.has(member.id) ? 'checked' : ''}
-             onclick="event.stopPropagation()">
+             onclick="event.stopPropagation(); toggleMember('${member.id}')">
       <div class="avatar">${member.name[0]}</div>
       <div class="flex-1">
         <div class="font-semibold mb-4">${member.name}</div>
@@ -992,7 +1155,7 @@ function updateMembersGrid(members) {
     return `
       <div class="member-card">
         <div class="member-card-header">
-          <div class="avatar avatar-large">${member.name[0]}</div>
+          <div class="avatar">${member.name[0]}</div>
           <div class="member-card-info">
             <div class="member-card-name">${member.name}</div>
             <div class="member-card-team">${member.team || '無部門'}</div>
@@ -1006,9 +1169,9 @@ function updateMembersGrid(members) {
           <div class="member-card-points-value">${member.points}</div>
           <div class="member-card-points-label">累計積分</div>
         </div>
-        <button class="btn btn-secondary btn-small mt-12" style="width:100%"
+        <button class="btn btn-secondary btn-small mt-12" style="width:100%;font-size:12px;padding:8px"
                 onclick="toggleMemberExpand('${member.id}')">
-          ${isExpanded ? '收起積分來源 ▲' : '查看積分來源 ▼'}
+          ${isExpanded ? '收起 ▲' : '詳情 ▼'}
         </button>
         ${isExpanded ? `
           <div class="records-panel" style="padding:16px;margin-top:12px;background:rgba(0,0,0,0.2);border-radius:12px">
@@ -1114,16 +1277,73 @@ window.submitNewTeam = function() {
   }
 };
 
+window.showEditTeamModal = function(teamId) {
+  const team = state.teams.find(t => t.id === teamId);
+  if (!team) return;
+  const container = $('#editTeamModalContainer');
+  if (container) {
+    container.innerHTML = renderEditTeamModal(team);
+  }
+};
+
+window.hideEditTeamModal = function() {
+  const container = $('#editTeamModalContainer');
+  if (container) {
+    container.innerHTML = '';
+  }
+};
+
+window.submitEditTeam = function(teamId) {
+  const name = $('#editTeamName').value.trim();
+  const description = $('#editTeamDesc').value.trim() || null;
+  if (name) {
+    updateTeam(teamId, { name, description });
+    hideEditTeamModal();
+  }
+};
+
+window.deleteTeam = deleteTeam;
+window.exportToExcel = exportToExcel;
+
 window.submitNewEvent = function() {
   const name = $('#newEventName').value;
   const points = $('#newEventPoints').value;
   const date = $('#newEventDate').value;
+  const time = $('#newEventTime').value;
   if (name && date) {
-    addEvent(name, points, date);
+    addEvent(name, points, date, time);
     $('#newEventName').value = '';
     $('#newEventPoints').value = '0.5';
     $('#newEventDate').value = '';
+    $('#newEventTime').value = '';
     $('#eventForm').classList.add('hidden');
+  }
+};
+
+window.showEditEventModal = function(eventId) {
+  const event = state.events.find(e => e.id === eventId);
+  if (!event) return;
+  const container = $('#editEventModalContainer');
+  if (container) {
+    container.innerHTML = renderEditEventModal(event);
+  }
+};
+
+window.hideEditEventModal = function() {
+  const container = $('#editEventModalContainer');
+  if (container) {
+    container.innerHTML = '';
+  }
+};
+
+window.submitEditEvent = function(eventId) {
+  const name = $('#editEventName').value.trim();
+  const points = parseFloat($('#editEventPoints').value);
+  const date = $('#editEventDate').value;
+  const time = $('#editEventTime').value || null;
+  if (name && date) {
+    updateEvent(eventId, { name, points, date, time });
+    hideEditEventModal();
   }
 };
 
@@ -1141,23 +1361,35 @@ async function init() {
       logout();
     }
   } else {
-    // 未登入，載入公開資料
+    // 未登入，載入公開資料（使用不需認證的公開 API）
     try {
-      const [membersRes, teamsRes, eventsRes] = await Promise.all([
-        fetch(`${API_URL}/api/members`).then(r => r.ok ? r.json() : { members: [] }).catch(() => ({ members: [] })),
-        fetch(`${API_URL}/api/teams`).then(r => r.ok ? r.json() : { teams: [] }).catch(() => ({ teams: [] })),
-        fetch(`${API_URL}/api/events`).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] }))
-      ]);
+      const publicRes = await fetch(`${API_URL}/api/public/leaderboard`).then(r => r.ok ? r.json() : { members: [], records: [] }).catch(() => ({ members: [], records: [] }));
 
-      state.members = membersRes.members || [];
-      state.teams = teamsRes.teams || [];
-      state.events = eventsRes.events || [];
+      state.members = publicRes.members || [];
+      state.checkInRecords = publicRes.records || [];
+      state.teams = [];
+      state.events = [];
     } catch (err) {
       console.log('Failed to load data');
     }
   }
 
   render();
+
+  // 攔截 Ctrl+F，避免瀏覽器搜尋干擾簽到操作
+  document.addEventListener('keydown', function(e) {
+    // 只在登入狀態且在簽到頁面時攔截
+    if (state.isLoggedIn && state.activeTab === 'checkin') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        // 聚焦到搜尋框
+        const searchInput = document.querySelector('.search-input');
+        if (searchInput) {
+          searchInput.focus();
+        }
+      }
+    }
+  });
 }
 
 init();
