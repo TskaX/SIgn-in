@@ -19,7 +19,8 @@ const state = {
   teamFilter: '全部',
   expandedMember: null,
   expandedLeaderboard: null,
-  isComposing: false
+  isComposing: false,
+  eventStatusFilter: 'active'
 };
 
 // DOM Helper
@@ -258,6 +259,24 @@ async function deleteEvent(id) {
   }
 }
 
+async function clearAllEvents() {
+  if (!confirm('確定要清除所有事件嗎？\n\n注意：已登記的簽到記錄與積分不會受到影響。\n此操作無法復原！')) return;
+  if (!confirm('再次確認：真的要清除所有事件嗎？')) return;
+  try {
+    const result = await api('/api/events/clear-all', { method: 'POST' });
+    showToast(`已清除 ${result.events_deleted} 個事件`);
+    await loadData();
+    render();
+  } catch (err) {
+    alert('清除失敗：' + err.message);
+  }
+}
+
+function filterEvents(status) {
+  state.eventStatusFilter = status;
+  render();
+}
+
 async function updateEventStatus(id, status) {
   try {
     await api(`/api/events/${id}`, {
@@ -381,8 +400,8 @@ function renderHeader() {
     return `
       <header class="header">
         <div class="header-left">
-          <div class="logo">✓</div>
-          <span class="header-title">簽到積分系統</span>
+          <img src="logo.png" alt="Logo" class="logo" style="height:36px;width:auto;border-radius:8px;object-fit:contain">
+          <span class="header-title">火爆雞舍簽到系統</span>
         </div>
         <button class="btn btn-primary" onclick="showLoginModal()">管理員登入</button>
       </header>
@@ -392,11 +411,11 @@ function renderHeader() {
   return `
     <header class="header">
       <div class="header-left">
-        <div class="logo">✓</div>
-        <span class="header-title">簽到積分系統</span>
+        <img src="logo.png" alt="Logo" class="logo" style="height:36px;width:auto;border-radius:8px;object-fit:contain">
+        <span class="header-title">火爆雞舍簽到系統</span>
       </div>
       <div class="header-right">
-        <span class="header-user">歡迎，${state.user?.name || '管理員'}</span>
+        <span class="header-user">歡迎，火爆的管理員</span>
         <button class="btn btn-secondary btn-small" onclick="logout()">登出</button>
       </div>
     </header>
@@ -443,12 +462,12 @@ function renderLoginModal() {
 
         <div class="form-group">
           <label class="form-label">帳號</label>
-          <input type="text" id="loginUsername" class="form-input" placeholder="請輸入帳號">
+          <input type="text" id="loginUsername" class="form-input" placeholder="請輸入帳號" onkeydown="if(event.key==='Enter')$('#loginPassword').focus()">
         </div>
 
         <div class="form-group">
           <label class="form-label">密碼</label>
-          <input type="password" id="loginPassword" class="form-input" placeholder="請輸入密碼">
+          <input type="password" id="loginPassword" class="form-input" placeholder="請輸入密碼" onkeydown="if(event.key==='Enter')handleLoginSubmit()">
         </div>
 
         <div class="form-buttons">
@@ -769,7 +788,10 @@ function renderEventsPage() {
   return `
     <div class="page-header">
       <h2 class="page-title">事件管理</h2>
-      <button class="btn btn-primary" onclick="toggleEventForm()">+ 新增事件</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-danger" onclick="clearAllEvents()">清除所有事件</button>
+        <button class="btn btn-primary" onclick="toggleEventForm()">+ 新增事件</button>
+      </div>
     </div>
 
     <div class="card hidden" id="eventForm">
@@ -782,8 +804,14 @@ function renderEventsPage() {
       </div>
     </div>
 
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn ${state.eventStatusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}" onclick="filterEvents('active')">進行中</button>
+      <button class="btn ${state.eventStatusFilter === 'completed' ? 'btn-primary' : 'btn-secondary'}" onclick="filterEvents('completed')">已結束</button>
+      <button class="btn ${state.eventStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="filterEvents('all')">全部</button>
+    </div>
+
     <div class="list">
-      ${state.events.map(event => {
+      ${[...state.events].filter(e => state.eventStatusFilter === 'all' || e.status === state.eventStatusFilter).sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(event => {
         const statusClass = event.status === 'active' ? 'status-active' : 'status-completed';
         const timeDisplay = event.time ? ` ${event.time}` : '';
         return `

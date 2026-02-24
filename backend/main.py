@@ -544,6 +544,17 @@ async def delete_event(event_id: str, _: dict = Depends(require_admin)):
     save_db()
     return {"message": "刪除成功"}
 
+@app.post("/api/events/clear-all", tags=["事件管理"])
+async def clear_all_events(_: dict = Depends(require_admin)):
+    """清除所有事件"""
+    events_count = len(db["events"])
+    db["events"].clear()
+    save_db()
+    return {
+        "message": "已清除所有事件",
+        "events_deleted": events_count
+    }
+
 # ----- 簽到 -----
 @app.post("/api/checkin", tags=["簽到"])
 async def single_checkin(request: CheckInRequest, _: dict = Depends(verify_token)):
