@@ -814,6 +814,7 @@ function renderEventsPage() {
       ${[...state.events].filter(e => state.eventStatusFilter === 'all' || e.status === state.eventStatusFilter).sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(event => {
         const statusClass = event.status === 'active' ? 'status-active' : 'status-completed';
         const timeDisplay = event.time ? ` ${event.time}` : '';
+        const checkinCount = state.checkInRecords.filter(r => r.event_id === event.id).length;
         return `
           <div class="list-item" style="cursor:default">
             <div class="avatar" style="background:${event.status === 'active' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' :
@@ -822,6 +823,7 @@ function renderEventsPage() {
               <div class="font-semibold mb-4">${event.name}</div>
               <div class="text-muted" style="font-size:13px">${event.date}${timeDisplay}</div>
             </div>
+            <div class="badge" style="background:rgba(99,102,241,0.15);color:#a5b4fc;margin-right:8px">${checkinCount} 人簽到</div>
             <div class="badge badge-primary" style="margin-right:16px">+${event.points} 積分</div>
             <select class="form-select ${statusClass}" style="padding:8px 12px;border-radius:20px;margin-right:12px"
                     onchange="updateEventStatus('${event.id}', this.value)">
